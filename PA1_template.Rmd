@@ -8,18 +8,134 @@ output:
 
 ## Loading and preprocessing the data
 
+Load the csv file into a data frame object, and have a quick look at the data:
+```{r}
+ourData <- read.csv("~/Coursera/C5W2/Assignment/activity.csv",header=TRUE,stringsAsFactors=FALSE)
+head(ourData,10)
+```
+
+Check the data types of the variables:
+
+```{r}
+lapply(ourData,class)
+```
+
+Convert the date variable into a POSIXct type, so that it's a date instead of a character object:
+```{r}
+ourData$date <- as.POSIXct(ourData$date)
+class(ourData$date)
+```
 
 
 ## What is mean total number of steps taken per day?
 
+The number of steps taken per day is:
+```{r}
+num_steps <- with(ourData,tapply(steps,as.factor(date),sum,na.rm=TRUE))
+num_steps
+```
 
+And we can have a look at the data in a histogram:
+```{r}
+library(ggplot2)
+qplot(num_steps,xlab="Total number of steps per day")
+```
+
+The mean of the total number of steps taken per day is:
+```{r}
+mean(num_steps)
+```
+
+And the median is:
+```{r}
+median(num_steps)
+```
 
 ## What is the average daily activity pattern?
 
+Let's find the average number of steps taken on each 5-minute time lapse across all days, and plot it:
+```{r}
+avg_num_steps <- with(ourData,tapply(steps,as.factor(interval),mean,na.rm=TRUE))
+plot(names(avg_num_steps),avg_num_steps,type="l",xlab="Time lapse (5 minutes period)",ylab="Average number of steps",main="Average number of steps per time interval across all days")
+```
 
+Find the time interval with the highest average number of steps:
+
+```{r}
+parse_time<-function(x){
+    if(nchar(x)<4){
+        x<-paste0(paste0(rep(0,4-nchar(x)),collapse=""),x)
+    }
+    time_x <- paste0(substr(x,1,2),":",substr(x,3,4))
+    return(time_x)
+}
+
+pos_max <- which(avg_num_steps == max(avg_num_steps))
+parse_time(names(avg_num_steps[pos_max]))
+```
 
 ## Imputing missing values
 
+Find the number of rows with at least one NA:
+```{r}
+sum(!complete.cases(ourData))
+```
 
+In fact all the NAs appear only in the "steps" variable:
+```{r}
+lapply(ourData,function(x) sum(is.na(x)))
+```
+
+If we look at the data, there seem to be entire days with missing values. And if we look at the number of NAs by time interval, they look more evenly distributed (8 over 61). Therefore, we'll impute the values grouping by time interval
+
+```{r}
+with(ourData,tapply(steps,as.factor(date),function(x) sum(is.na(x))))
+with(ourData,tapply(steps,as.factor(interval),function(x) sum(is.na(x))))
+```
+
+And we'll use the mean value to do so
+
+```{r}
+ourData$meanTL <- tapply(ourData$steps, as.factor(ourData$interval), mean, na.rm=TRUE)
+imputed_df <- data.frame(date = ourData$date, interval=ourData$interval)
+imputed_df$steps <- ifelse(is.na(ourData$steps),ourData$meanTL,ourData$steps)
+```
+
+Now look at the total number of steps taken each day after having imputed the missing values:
+
+```{r}
+num_steps_imputedNAs <- with(imputed_df,tapply(steps,as.factor(date),sum,na.rm=TRUE))
+qplot(num_steps_imputedNAs,xlab="Total number of steps per day")
+```
+
+And finally, report on the new mean and median values of the total number of steps taken each day:
+
+```{r}
+mean(num_steps_imputedNAs)
+median(num_steps_imputedNAs)
+```
+
+Imputing values does have an influence on the final data reports, so we have to be very careful, and always bear in mind what's the final measure we want to take to minimize the impact.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Add the extra column which will indicate whether the day is a "weekday" or "weekend":
+
+```{r}
+imputed_df$day_name <- weekdays(imputed_df$date,FALSE)
+imputed_df$weekdayend <- ifelse(imputed_df$day_name == "sábado" | imputed_df$day_name == "domingo","weekend","weekday")
+```
+
+Finally, plot the average number of steps taken each time interval, split by weekend/weekday, which will indicate whether there's a different pattern depending on this chosen variable. 
+
+```{r}
+weekdays <- subset(imputed_df, weekdayend == "weekday")
+weekend <- subset(imputed_df, weekdayend == "weekend")
+
+avg_num_steps_WD <- with(weekdays,tapply(steps,as.factor(interval),mean,na.rm=TRUE))
+avg_num_steps_WE <- with(weekend,tapply(steps,as.factor(interval),mean,na.rm=TRUE))
+
+plot(names(avg_num_steps_WD),avg_num_steps_WD,type="l",col="green",xlab="Time lapse (5 minutes period)",ylab="Average number of steps",main="Average number of steps per time interval across all days")
+lines(names(avg_num_steps_WE),avg_num_steps_WE,type="l",col="red")
+legend("topleft",c("Weekday","Weekend"),col=c("green","red"),lty=1)
+```
